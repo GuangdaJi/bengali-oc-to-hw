@@ -1,0 +1,6 @@
+__pycache__
+.ipynb_checkpoints
+experiment/
+data/bengaliai-cv19/
+model/__pycache__
+data/bengalimodel/
