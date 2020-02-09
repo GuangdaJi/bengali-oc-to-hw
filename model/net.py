@@ -1,4 +1,5 @@
 # import torch
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models.densenet as dsn
@@ -101,7 +102,13 @@ class Decoder(nn.Module):
         self.deconv6 = deconv(conv_dim*2, conv_dim*1, k_size=5, stride=2)  # 32x32 -> 64x64
         self.deconv7 = deconv(conv_dim*1, out_dim, k_size=5, stride=2, bn=False)  # 64x64 -> 128x128
 
-        # self.deconv2 = deconv(conv_dim, 3, 4, bn=False)
+        # Official init from torch repo.
+        for m in self.modules():
+            if isinstance(m, nn.ConvTranspose2d):
+                nn.init.normal_(m.weight, std=0.02)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         out = F.leaky_relu(self.deconv1(x), 0.05)
@@ -110,5 +117,56 @@ class Decoder(nn.Module):
         out = F.leaky_relu(self.deconv4(out), 0.05)
         out = F.leaky_relu(self.deconv5(out), 0.05)
         out = F.leaky_relu(self.deconv6(out), 0.05)
-        out = F.leaky_relu(self.deconv7(out), 0.05)
+        out = F.tanh(self.deconv7(out))
+        return out
+
+
+def conv(in_channels, out_channels, k_size=4, stride=4, bn=True):
+    layers = []
+    layers.append(
+        nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=k_size,
+            stride=stride,
+            padding=(k_size-stride) // 2,
+            bias=False,
+        )
+    )
+    if bn:
+        layers.append(nn.BatchNorm2d(out_channels))
+    return nn.Sequential(*layers)
+
+
+class Discriminator(nn.Module):
+    def __init__(self, in_channels=1, conv_dim=64):
+        super(Discriminator, self).__init__()
+
+        self.conv1 = conv(in_channels, conv_dim*1, bn=False)  # 128->32, 1->64
+        self.conv2 = conv(conv_dim*1, conv_dim*2)  # 32->8, 64->128
+        self.conv3 = conv(conv_dim*2, conv_dim*4)  # 8->2, 128->256,
+        self.conv4 = conv(conv_dim*4, conv_dim*8, stride=2, bn=False)  # 2->1, 256->512,
+
+        self.bn = nn.BatchNorm2d(conv_dim*8)
+
+        self.classifier = nn.Linear(conv_dim*8, 1)
+
+        # Official init from torch repo.
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, std=0.02)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, std=0.02)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        out = F.leaky_relu(self.conv1(x), 0.05)
+        out = F.leaky_relu(self.conv2(out), 0.05)
+        out = F.leaky_relu(self.conv3(out), 0.05)
+        out = F.leaky_relu(self.conv4(out), 0.05)
+        out = torch.flatten(out, 1)
+        out = self.classifier(out)
         return out
