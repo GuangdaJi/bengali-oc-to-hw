@@ -4,3 +4,4 @@ experiment/
 data/bengaliai-cv19/
 model/__pycache__
 data/bengalimodel/
+.DS_Store
